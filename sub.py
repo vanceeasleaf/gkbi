@@ -2,17 +2,19 @@
 # @Author: YangZhou
 # @Date:   2016-11-09 22:18:07
 # @Last Modified by:   YangZhou
-# @Last Modified time: 2016-11-21 16:26:19
+# @Last Modified time: 2016-11-21 18:03:22
 from ase import io 
 from ase.calculators.lj import LennardJones
 from fc import FC
 from ase import units
 import numpy as np
 from ase.md.npt import NPT
+from ase.md.nvtberendsen import NVTBerendsen
 from ase.md.velocitydistribution import MaxwellBoltzmannDistribution
 from ase.md import MDLogger
 from ase.io.trajectory import PickleTrajectory
 from aces.f import fn_timer
+from aces.tools import passthru
 @fn_timer
 def rotate_fc(rot):
 	from aces.f import rotatefc2,rotatefc3
@@ -48,16 +50,18 @@ def mergeVec(x,y):
 atoms=io.read('POSCAR')
 atoms,rot=get_rotated_atoms(atoms)
 rotate_fc(rot)
-atoms=atoms.repeat([3,3,3])
+atoms=atoms.repeat([2,2,2])
 zeropos=atoms.copy()
 
 refatoms2,rot=get_rotated_atoms(io.read("SPOSCAR_2ND"))
 refatoms3,rot=get_rotated_atoms(io.read("SPOSCAR_3RD"))
 atoms.set_calculator(FC(zeropos=zeropos,refatoms2=refatoms2,refatoms3=refatoms3))
-MaxwellBoltzmannDistribution(atoms, 3000.0*units.kB)
-dyn = NPT(atoms, 25 * units.fs,3000.0*units.kB,0,30*units.fs,None,(1,1,1))
+MaxwellBoltzmannDistribution(atoms, 300.0*units.kB)
+atoms.set_velocities(atoms.get_velocities()*100)
+dyn = NPT(atoms, 25 * units.fs,300.0*units.kB,0,.25*units.fs,None,(1,1,1))
+#dyn=NVTBerendsen(atoms,25 * units.fs,100.0*units.kB,0.25*units.fs)
 dyn.attach(MDLogger(dyn, atoms, 'md.log', header=True, stress=False,
-peratom=True, mode="a"), interval=10)
+peratom=True, mode="w"), interval=1)
 traj = PickleTrajectory('a.traj', 'w',atoms)
 def xx():
 	#print atoms.get_velocities()
@@ -65,11 +69,10 @@ def xx():
 def printenergy(a=atoms):
 	epot = a.get_potential_energy() / len(a)
 	ekin = a.get_kinetic_energy() / len(a)
-	print ("Energy per atom: Epot = %.3feV Ekin = %.3feV (T=%3.0fK) Etot = %.3feV" %(epot, ekin, ekin/(1.5*units.kB), epot+ekin))
+	print ("%d Energy per atom: Epot = %.3feV Ekin = %.3feV (T=%3.0fK) Etot = %.3feV" %(dyn.nsteps,epot, ekin, ekin/(1.5*units.kB), epot+ekin))
 # Now run the dynamics
 printenergy(atoms)
-dyn.attach(printenergy, interval=10)
-dyn.attach(traj, interval=10)
+dyn.attach(printenergy, interval=1)
+dyn.attach(traj, interval=1)
 dyn.run(2000)
-from aces.tools import passthru
 passthru("ase-gui a.traj -o a.xyz ")
