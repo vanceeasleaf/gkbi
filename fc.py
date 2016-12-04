@@ -28,7 +28,6 @@ class FC(Calculator):
     @fn_timer
     def expand2(self,refatoms,zeropos,unit,fc):
         n=len(zeropos)
-        fc2=np.zeros([n,n,3,3])
         d=fftn(fc,axes=[0,1])
         fc2=ifftn(d,s=[n,n],axes=[0,1]).real
         return fc2
@@ -38,7 +37,6 @@ class FC(Calculator):
         d=fftn(fc,axes=[0,1,2])
         fc3=ifftn(d,s=[n,n,n],axes=[0,1,2]).real
         return fc3
-    @fn_timer
     def calculate(self, atoms=None,
                   properties=['energy'],
                   system_changes=all_changes):
