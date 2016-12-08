@@ -11,40 +11,32 @@ from numpy.fft import fftn,ifftn
 from aces.tools import *
 class FC(Calculator):
     implemented_properties = ['energy', 'forces']
-    default_parameters = {'zeropos':None,'refatoms2':None,'refatoms3':None}
     nolabel = True
     @fn_timer
     def __init__(self, **kwargs):
         Calculator.__init__(self, **kwargs)       
-        refatoms2=self.parameters.refatoms2
-        refatoms3=self.parameters.refatoms3
-        zeropos=self.parameters.zeropos  
-        unit=io.read('POSCAR')
-        self.fc2=readfc2('fc2new')
-        self.fc3=readfc3(refatoms3,unit,'fc3new')       
-        self.fc2=self.expand2(refatoms2,zeropos,unit,self.fc2)
-        self.fc3=self.expand3(refatoms3,zeropos,unit,self.fc3)  
-
-    @fn_timer
-    def expand2(self,refatoms,zeropos,unit,fc):
-        n=len(zeropos)
-        d=fftn(fc,axes=[0,1])
-        fc2=ifftn(d,s=[n,n],axes=[0,1]).real
-        return fc2
-    @fn_timer
-    def expand3(self,refatoms,zeropos,unit,fc):
-        n=len(zeropos)
-        d=fftn(fc,axes=[0,1,2])
-        fc3=ifftn(d,s=[n,n,n],axes=[0,1,2]).real
-        return fc3
+        self.fc2=self.parameters.fc2
+        self.fc3=self.parameters.fc3
     def calculate(self, atoms=None,
-                  properties=['energy'],
+                  properties=['forces','energy'],
                   system_changes=all_changes):
         Calculator.calculate(self, atoms, properties, system_changes)
         zeropos=self.parameters.zeropos  
         positions = self.atoms.positions      
         u=positions-zeropos.positions
-        f2=np.einsum('ijkl,jl',self.fc2,u)
-        f3=np.einsum('ijklmn,jm,kn',self.fc3 ,u,u)
-        self.results['forces']=f2+f3
-        self.results['energy'] = np.einsum('ik,ik',f2*.5+1.0/6*f3,u)
+        us=np.zeros([27,len(u)])
+        uss=np.zeros([27,len(u),3])
+        import itertools
+        for j,(ja,jb,jc) in enumerate(itertools.product(xrange(-1,2),
+                                                xrange(-1,2),
+                                                xrange(-1,2))):
+            uj=u+np.dot([ja,jb,jc],zeropos.cell)
+            us[j]=np.linalg.norm(uj,axis=1)
+            uss[j]=uj
+        map0=np.argmin(us,axis=0)
+        for i,x in enumerate(map0):
+            u[i]=uss[x,i]
+        f2=-np.einsum('ijkl,jl',self.fc2,u)
+        f3=-np.einsum('ijklmn,jm,kn',self.fc3 ,u,u)
+        self.results['forces']=(f2+f3)
+        self.results['energy'] = -np.einsum('ik,ik',f2*.5+1.0/6*f3,u)
